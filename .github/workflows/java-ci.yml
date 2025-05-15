@@ -1,0 +1,29 @@
+name: Java CI with Maven (or Gradle)
+
+on:
+  push:
+    branches: [ "main", "master" ] # Adjust your main branch name
+  pull_request:
+    branches: [ "main", "master" ] # Adjust your main branch name
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4 # Use a recent version
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4 # Use a recent version
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: 'maven' # or 'gradle' if you chose Gradle
+
+    - name: Build with Maven # Change name if using Gradle
+      run: mvn -B clean package --file pom.xml # For Maven
+    # - name: Build with Gradle
+    #   run: ./gradlew build # For Gradle (ensure gradlew is executable)
+
+    # Add more steps later, like uploading test reports or artifacts
