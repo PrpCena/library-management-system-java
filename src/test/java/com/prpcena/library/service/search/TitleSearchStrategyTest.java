@@ -34,11 +34,13 @@ class TitleSearchStrategyTest {
 
     @Test
     void search_WithPartialMatchingQuery_ShouldReturnMatchingBooks() {
-        List<Book> books = Arrays.asList(book1, book2, book3);
-        List<Book> results = strategy.search(books, "the"); // Matches "The Lord..." and "The Hobbit"
-        assertEquals(2, results.size());
-        assertTrue(results.contains(book1));
-        assertTrue(results.contains(book2));
+        List<Book> books = Arrays.asList(book1, book2, book3); // book3 is "Another Great Book"
+        List<Book> results = strategy.search(books, "the"); // "the" is in "The", "The", and "Another"
+        assertEquals(3, results.size(), "Expected 3 books containing 'the'"); // ADJUSTED
+        assertTrue(results.contains(book1), "Book1 ('The Lord of the Rings') should be found");
+        assertTrue(results.contains(book2), "Book2 ('The Hobbit') should be found");
+        assertTrue(results.contains(book3),
+                "Book3 ('Another Great Book') should be found because 'the' is in 'Another'"); // ADDED
     }
 
     @Test
