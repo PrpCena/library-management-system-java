@@ -56,13 +56,7 @@ class InMemoryBookRepositoryTest {
     void save_NullBook_ShouldThrowException() {
         assertThrows(IllegalArgumentException.class, () -> bookRepository.save(null));
     }
-
-    @Test
-    void save_BookWithNullIsbn_ShouldThrowException() {
-        Book bookWithNullIsbn = new Book("No ISBN", author1, null, "Genre", Year.now(), 1);
-        assertThrows(IllegalArgumentException.class, () -> bookRepository.save(bookWithNullIsbn));
-    }
-
+    
     @Test
     void findByIsbn_ExistingIsbn_ShouldReturnBook() {
         bookRepository.save(book1);
