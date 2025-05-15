@@ -360,4 +360,60 @@ class LibraryServiceImplTest {
         assertEquals(1, overdueBooks.size());
         assertEquals("ISBN_OVERDUE", overdueBooks.get(0).getBookIsbn());
     }
+
+    // --- Search Service Tests ---
+    @Test
+    void searchBooksByTitle_WhenBooksExist_ShouldReturnMatchingBooks() {
+        Book bookA = new Book("Java Programming", author1, "ISBN100", "Education", Year.now(), 1);
+        Book bookB = new Book("Advanced Java", author1, "ISBN101", "Education", Year.now(), 1);
+        Book bookC = new Book("Python Basics", author1, "ISBN102", "Education", Year.now(), 1);
+        List<Book> allBooks = Arrays.asList(bookA, bookB, bookC);
+
+        when(mockBookRepository.findAll()).thenReturn(allBooks);
+
+        List<Book> results = libraryService.searchBooksByTitle("Java");
+        assertEquals(2, results.size());
+        assertTrue(results.contains(bookA));
+        assertTrue(results.contains(bookB));
+        assertFalse(results.contains(bookC));
+    }
+
+    @Test
+    void searchBooksByAuthor_WhenBooksExist_ShouldReturnMatchingBooks() {
+        Author authorX = new Author("John", "Smith");
+        Author authorY = new Author("Jane", "Smithson");
+        Book bookX = new Book("Book By John", authorX, "ISBN200", "Fiction", Year.now(), 1);
+        Book bookY = new Book("Another By Jane", authorY, "ISBN201", "Fiction", Year.now(), 1);
+        List<Book> allBooks = Arrays.asList(bookX, bookY);
+
+        when(mockBookRepository.findAll()).thenReturn(allBooks);
+
+        List<Book> results = libraryService.searchBooksByAuthor("Smith"); // Matches "Smith" and "Smithson"
+        assertEquals(2, results.size());
+        assertTrue(results.contains(bookX));
+        assertTrue(results.contains(bookY));
+    }
+
+    @Test
+    void searchBooksByGenre_WhenBooksExist_ShouldReturnMatchingBooks() {
+        Book bookSciFi = new Book("Dune", author1, "ISBN300", "Science Fiction", Year.now(), 1);
+        Book bookFantasy = new Book("Narnia", author1, "ISBN301", "Fantasy", Year.now(), 1);
+        List<Book> allBooks = Arrays.asList(bookSciFi, bookFantasy);
+
+        when(mockBookRepository.findAll()).thenReturn(allBooks);
+
+        List<Book> results = libraryService.searchBooksByGenre("Science Fiction");
+        assertEquals(1, results.size());
+        assertTrue(results.contains(bookSciFi));
+    }
+
+    @Test
+    void searchBooksByTitle_NoMatchingBooks_ShouldReturnEmptyList() {
+        Book bookA = new Book("Java Programming", author1, "ISBN100", "Education", Year.now(), 1);
+        List<Book> allBooks = Arrays.asList(bookA);
+        when(mockBookRepository.findAll()).thenReturn(allBooks);
+
+        List<Book> results = libraryService.searchBooksByTitle("Python");
+        assertTrue(results.isEmpty());
+    }
 }

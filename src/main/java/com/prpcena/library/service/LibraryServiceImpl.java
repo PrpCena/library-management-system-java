@@ -26,6 +26,10 @@ import com.prpcena.library.model.TransactionType;
 import com.prpcena.library.repository.BookRepository;
 import com.prpcena.library.repository.MemberRepository;
 import com.prpcena.library.repository.TransactionRepository;
+import com.prpcena.library.service.search.AuthorSearchStrategy;
+import com.prpcena.library.service.search.GenreSearchStrategy;
+import com.prpcena.library.service.search.SearchStrategy;
+import com.prpcena.library.service.search.TitleSearchStrategy;
 
 public class LibraryServiceImpl implements LibraryService {
     private static final Logger logger = LoggerFactory.getLogger(LibraryServiceImpl.class);
@@ -33,6 +37,9 @@ public class LibraryServiceImpl implements LibraryService {
     private final MemberRepository memberRepository; 
     private final TransactionRepository transactionRepository; // New field
     private static final int DEFAULT_LOAN_DURATION_DAYS = 14; // e.g., 2 weeks
+        private final SearchStrategy<Book> titleSearchStrategy = new TitleSearchStrategy();
+    private final SearchStrategy<Book> authorSearchStrategy = new AuthorSearchStrategy();
+    private final SearchStrategy<Book> genreSearchStrategy = new GenreSearchStrategy();
 
     // Updated Constructor Injection
     // Updated Constructor Injection
@@ -227,5 +234,26 @@ public class LibraryServiceImpl implements LibraryService {
         return transactionRepository.findAllOpenBorrowTransactions().stream()
                 .filter(Transaction::isOverdue)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<Book> searchBooksByTitle(String titleQuery) {
+        logger.debug("Searching books by title with query: '{}'", titleQuery);
+        List<Book> allBooks = bookRepository.findAll();
+        return titleSearchStrategy.search(allBooks, titleQuery);
+    }
+
+    @Override
+    public List<Book> searchBooksByAuthor(String authorQuery) {
+        logger.debug("Searching books by author with query: '{}'", authorQuery);
+        List<Book> allBooks = bookRepository.findAll();
+        return authorSearchStrategy.search(allBooks, authorQuery);
+    }
+
+    @Override
+    public List<Book> searchBooksByGenre(String genreQuery) {
+        logger.debug("Searching books by genre with query: '{}'", genreQuery);
+        List<Book> allBooks = bookRepository.findAll();
+        return genreSearchStrategy.search(allBooks, genreQuery);
     }
 }

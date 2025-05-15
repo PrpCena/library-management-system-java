@@ -3,6 +3,7 @@ package com.prpcena.library.cli; // Adjust package name
 
 import java.time.Year;
 import java.time.format.DateTimeParseException;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Scanner; // New
@@ -91,6 +92,9 @@ public class MainApp {
                 case 11:
                     listAllOverdueBooksUI();
                     break; // New
+                case 12:
+                    searchBooksMenuUI();
+                    break; // New option
                 case 0:
                     running = false;
                     break;
@@ -102,6 +106,57 @@ public class MainApp {
         System.out.println("Exiting Library Management System. Goodbye!");
         logger.info("Library Management System CLI stopped.");
         scanner.close();
+    }
+
+// New UI method for search submenu
+    private static void searchBooksMenuUI() {
+        System.out.println("\n--- Search Books ---");
+        System.out.println("1. Search by Title");
+        System.out.println("2. Search by Author");
+        System.out.println("3. Search by Genre");
+        System.out.println("0. Back to Main Menu");
+        System.out.print("Enter search type: ");
+        String choiceStr = scanner.nextLine();
+        int choice;
+        try {
+            choice = Integer.parseInt(choiceStr);
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid input. Please enter a number.");
+            return;
+        }
+
+        if (choice == 0) return;
+
+        System.out.print("Enter search query: ");
+        String query = scanner.nextLine();
+        List<Book> results = Collections.emptyList();
+
+        try {
+            switch (choice) {
+                case 1:
+                    results = libraryService.searchBooksByTitle(query);
+                    break;
+                case 2:
+                    results = libraryService.searchBooksByAuthor(query);
+                    break;
+                case 3:
+                    results = libraryService.searchBooksByGenre(query);
+                    break;
+                default:
+                    System.out.println("Invalid search type.");
+                    return;
+            }
+
+            if (results.isEmpty()) {
+                System.out.println("No books found matching your query: '" + query + "'");
+            } else {
+                System.out.println("Search results for query '" + query + "':");
+                results.forEach(System.out::println);
+            }
+        } catch (Exception e) {
+            System.out.println("An error occurred during search: " + e.getMessage());
+            logger.error("Error in searchBooksMenuUI", e);
+        }
     }
 
     private static void printMenu() {
@@ -120,7 +175,8 @@ public class MainApp {
         System.out.println("9. Return Book");
         System.out.println("10. List Member's Borrowed Books");
         System.out.println("11. List All Overdue Books");
-        System.out.println("-----------------------");
+        System.out.println("--- Book Searching ---");
+        System.out.println("12. Search Books");
         System.out.println("0. Exit");
         System.out.print("Enter your choice: ");
     }

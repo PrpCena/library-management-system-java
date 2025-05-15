@@ -162,4 +162,28 @@ public interface LibraryService {
      * @return A list of Transaction objects representing overdue loans.
      */
     List<Transaction> getAllOverdueBooks();
+
+    /**
+     * Searches for books by title.
+     * 
+     * @param titleQuery The query string to search for in book titles.
+     * @return A list of books matching the title query.
+     */
+    List<Book> searchBooksByTitle(String titleQuery);
+
+    /**
+     * Searches for books by author.
+     * 
+     * @param authorQuery The query string to search for in author names.
+     * @return A list of books matching the author query.
+     */
+    List<Book> searchBooksByAuthor(String authorQuery);
+
+    /**
+     * Searches for books by genre.
+     * 
+     * @param genreQuery The query string to search for in book genres.
+     * @return A list of books matching the genre query.
+     */
+    List<Book> searchBooksByGenre(String genreQuery);
 }
