@@ -1,13 +1,6 @@
 // src/main/java/com/yourusername/library/cli/MainApp.java
-package com.prpcena.library.cli; // Adjust package name
-
-import com.prpcena.library.model.Book;
-import com.prpcena.library.repository.BookRepository;
-import com.prpcena.library.repository.InMemoryBookRepository;
-import com.prpcena.library.service.LibraryService;
-import com.prpcena.library.service.LibraryServiceImpl;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+// Make sure to use your actual package name
+package com.prpcena.library.cli; // Assuming this is your package
 
 import java.time.Year;
 import java.time.format.DateTimeParseException;
@@ -15,10 +8,19 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Scanner;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.prpcena.library.model.Book;
+import com.prpcena.library.repository.BookRepository; // Ensure this import is present
+import com.prpcena.library.repository.InMemoryBookRepository;
+import com.prpcena.library.service.LibraryService;
+import com.prpcena.library.service.LibraryServiceImpl;
+
 public class MainApp {
     private static final Logger logger = LoggerFactory.getLogger(MainApp.class);
     private static LibraryService libraryService;
-    private static Scanner scanner = new Scanner(System.in);
+    private static final Scanner scanner = new Scanner(System.in); // Make scanner final if not reassigned
 
     public static void main(String[] args) {
         // Setup: Dependency Injection
@@ -32,6 +34,10 @@ public class MainApp {
             int choice = -1;
             try {
                 String input = scanner.nextLine();
+                if (input.trim().isEmpty()) { // Handle empty input gracefully
+                    System.out.println("No input provided. Please enter a number.");
+                    continue;
+                }
                 choice = Integer.parseInt(input);
             } catch (NumberFormatException e) {
                 System.out.println("Invalid input. Please enter a number.");
@@ -88,15 +94,22 @@ public class MainApp {
             System.out.print("Enter genre: ");
             String genre = scanner.nextLine();
             System.out.print("Enter publication year (YYYY): ");
-            Year publicationYear = Year.parse(scanner.nextLine()); // Can throw DateTimeParseException
+            String yearInput = scanner.nextLine();
+            if (yearInput.trim().isEmpty())
+                throw new IllegalArgumentException("Publication year cannot be empty.");
+            Year publicationYear = Year.parse(yearInput); // Can throw DateTimeParseException
+
             System.out.print("Enter number of copies: ");
-            int copies = Integer.parseInt(scanner.nextLine()); // Can throw NumberFormatException
+            String copiesInput = scanner.nextLine();
+            if (copiesInput.trim().isEmpty())
+                throw new IllegalArgumentException("Number of copies cannot be empty.");
+            int copies = Integer.parseInt(copiesInput); // Can throw NumberFormatException
 
             Book addedBook = libraryService.addBook(title, authorFirstName, authorLastName, isbn, genre,
                     publicationYear, copies);
             System.out.println("Book added successfully: " + addedBook.getTitle());
             logger.info("Book added via UI: {}", addedBook.getIsbn());
-        } catch (IllegalArgumentException | DateTimeParseException | NumberFormatException e) {
+        } catch (IllegalArgumentException | DateTimeParseException e) { // CORRECTED CATCH BLOCK
             System.out.println("Error adding book: " + e.getMessage());
             logger.error("Error during addBookUI: ", e);
         }
@@ -120,7 +133,7 @@ public class MainApp {
             System.out.println("No books in the library.");
         } else {
             System.out.println("All books in library:");
-            books.forEach(System.out::println);
+            books.forEach(System.out::println); // Assumes Book.toString() is well-defined
         }
         logger.debug("listAllBooksUI called. Found {} books.", books.size());
     }
@@ -137,7 +150,7 @@ public class MainApp {
                 System.out.println("Could not remove book with ISBN " + isbn + ". It might not exist.");
                 logger.warn("Failed to remove book via UI (not found or error): {}", isbn);
             }
-        } catch (Exception e) { // Catching broader exceptions that might arise from service/repo
+        } catch (Exception e) {
             System.out.println("Error removing book: " + e.getMessage());
             logger.error("Error during removeBookByIsbnUI for ISBN {}: ", isbn, e);
         }
