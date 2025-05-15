@@ -1,29 +1,49 @@
 // src/test/java/com/yourusername/library/service/LibraryServiceImplTest.java
 package com.prpcena.library.service; // Adjust package name
 
-import com.prpcena.library.exception.*;
-import com.prpcena.library.model.Author;
-import com.prpcena.library.model.Book;
-import com.prpcena.library.model.Member;
-import com.prpcena.library.repository.BookRepository;
-import com.prpcena.library.repository.MemberRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.Year;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.argThat;
+
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.prpcena.library.exception.BookAlreadyBorrowedException;
+import com.prpcena.library.exception.BookNotBorrowedException;
+import com.prpcena.library.exception.BookNotFoundException;
+import com.prpcena.library.exception.MemberNotFoundException;
+import com.prpcena.library.exception.NoCopiesAvailableException;
+import com.prpcena.library.exception.OperationFailedException;
+import com.prpcena.library.model.Author;
+import com.prpcena.library.model.Book;
+import com.prpcena.library.model.Member;
+import com.prpcena.library.model.Transaction;
+import com.prpcena.library.model.TransactionType;
+import com.prpcena.library.repository.BookRepository;
+import com.prpcena.library.repository.MemberRepository;
+import com.prpcena.library.repository.TransactionRepository;
 
 @ExtendWith(MockitoExtension.class)
 class LibraryServiceImplTest {
@@ -33,6 +53,9 @@ class LibraryServiceImplTest {
 
     @Mock // New Mock for MemberRepository
     private MemberRepository mockMemberRepository;
+
+    @Mock
+    private TransactionRepository mockTransactionRepository;
 
     @InjectMocks
     private LibraryServiceImpl libraryService;
@@ -236,5 +259,105 @@ class LibraryServiceImplTest {
                 "Copies should be decremented even if save fails, as per current logic.");
         // If we wanted to ensure copies are NOT changed if save fails, the logic in
         // borrowBook would need to be different (e.g., clone book before modifying).
+
+         @Test
+    void borrowBook_MemberAlreadyBorrowed_ShouldThrowBookAlreadyBorrowedException() {
+        when(mockMemberRepository.findById(member1.getMemberId())).thenReturn(Optional.of(member1));
+        when(mockBookRepository.findByIsbn(book1.getIsbn())).thenReturn(Optional.of(book1));
+        // Simulate that an open transaction already exists for this member and book
+        when(mockTransactionRepository.findOpenBorrowTransactionByMemberAndBook(member1.getMemberId(), book1.getIsbn()))
+                .thenReturn(Optional.of(new Transaction(book1.getIsbn(), member1.getMemberId(), LocalDate.now().plusDays(5))));
+
+        assertThrows(BookAlreadyBorrowedException.class,
+                () -> libraryService.borrowBook(member1.getMemberId(), book1.getIsbn()));
+        verify(mockBookRepository, never()).save(any(Book.class)); // Book state shouldn't change
+        verify(mockTransactionRepository, never()).save(any(Transaction.class)); // New transaction shouldn't be saved
+    }
+    
+    @Test
+    void borrowBook_Successful_ShouldCreateTransactionAndDecreaseCopies() {
+        Book bookToBorrow = new Book("Title", author1, "ISBN_TO_BORROW", "Genre", Year.now(), 1);
+        when(mockMemberRepository.findById(member1.getMemberId())).thenReturn(Optional.of(member1));
+        when(mockBookRepository.findByIsbn(bookToBorrow.getIsbn())).thenReturn(Optional.of(bookToBorrow));
+        when(mockTransactionRepository.findOpenBorrowTransactionByMemberAndBook(member1.getMemberId(), bookToBorrow.getIsbn()))
+                .thenReturn(Optional.empty()); // No existing open loan
+        when(mockBookRepository.save(any(Book.class))).thenReturn(bookToBorrow); // Mock saving the book
+        when(mockTransactionRepository.save(any(Transaction.class))).thenAnswer(inv -> inv.getArgument(0)); // Mock saving transaction
+
+        assertDoesNotThrow(() -> libraryService.borrowBook(member1.getMemberId(), bookToBorrow.getIsbn()));
+
+        assertEquals(0, bookToBorrow.getAvailableCopies());
+        verify(mockBookRepository, times(1)).save(bookToBorrow);
+        verify(mockTransactionRepository, times(1)).save(argThat(t ->
+                t.getBookIsbn().equals(bookToBorrow.getIsbn()) &&
+                t.getMemberId().equals(member1.getMemberId()) &&
+                t.getType() == TransactionType.BORROW &&
+                t.getDueDate() != null
+        ));
+    }
+
+    @Test
+    void returnBook_Successful_ShouldUpdateTransactionAndIncreaseCopies() {
+        Book bookToReturn = new Book("Borrowed Title", author1, "ISBN_RETURN", "Genre", Year.now(), 0); // Initially 0 copies
+        Transaction openTransaction = new Transaction(bookToReturn.getIsbn(), member1.getMemberId(), LocalDate.now().plusDays(7));
+
+        when(mockMemberRepository.findById(member1.getMemberId())).thenReturn(Optional.of(member1)); // Member exists
+        when(mockBookRepository.findByIsbn(bookToReturn.getIsbn())).thenReturn(Optional.of(bookToReturn)); // Book exists
+        when(mockTransactionRepository.findOpenBorrowTransactionByMemberAndBook(member1.getMemberId(), bookToReturn.getIsbn()))
+                .thenReturn(Optional.of(openTransaction)); // Open transaction exists
+        when(mockBookRepository.save(any(Book.class))).thenReturn(bookToReturn);
+        when(mockTransactionRepository.save(any(Transaction.class))).thenReturn(openTransaction);
+
+        assertDoesNotThrow(() -> libraryService.returnBook(member1.getMemberId(), bookToReturn.getIsbn()));
+
+        assertEquals(1, bookToReturn.getAvailableCopies()); // Copies increased
+        assertNotNull(openTransaction.getReturnDateTime()); // Return date set
+        verify(mockBookRepository, times(1)).save(bookToReturn);
+        verify(mockTransactionRepository, times(1)).save(openTransaction);
+    }
+
+    @Test
+    void returnBook_NoOpenTransaction_ShouldThrowBookNotBorrowedException() {
+        when(mockMemberRepository.findById(member1.getMemberId())).thenReturn(Optional.of(member1));
+        when(mockBookRepository.findByIsbn(book1.getIsbn())).thenReturn(Optional.of(book1));
+        when(mockTransactionRepository.findOpenBorrowTransactionByMemberAndBook(member1.getMemberId(), book1.getIsbn()))
+                .thenReturn(Optional.empty()); // No open transaction
+
+        assertThrows(BookNotBorrowedException.class,
+                () -> libraryService.returnBook(member1.getMemberId(), book1.getIsbn()));
+        verify(mockBookRepository, never()).save(any(Book.class));
+        verify(mockTransactionRepository, never()).save(any(Transaction.class));
+    }
+    
+    @Test
+    void getBorrowedBooksByMember_ShouldReturnActiveLoans() {
+        Transaction t1 = new Transaction("ISBN001", member1.getMemberId(), LocalDate.now().plusDays(1));
+        Transaction t2_returned = new Transaction("ISBN002", member1.getMemberId(), LocalDate.now().plusDays(1));
+        t2_returned.setReturnDateTime(LocalDateTime.now()); // Mark as returned
+
+        when(mockMemberRepository.findById(member1.getMemberId())).thenReturn(Optional.of(member1));
+        when(mockTransactionRepository.findByMemberId(member1.getMemberId())).thenReturn(List.of(t1, t2_returned));
+
+        List<Transaction> borrowedBooks = libraryService.getBorrowedBooksByMember(member1.getMemberId());
+
+        assertEquals(1, borrowedBooks.size());
+        assertEquals("ISBN001", borrowedBooks.get(0).getBookIsbn());
+    }
+
+    @Test
+    void getAllOverdueBooks_ShouldReturnOnlyOverdueOpenLoans() {
+        Transaction overdueBook = new Transaction("ISBN_OVERDUE", "MEMBER_X", LocalDate.now().minusDays(1)); // Overdue
+        Transaction notOverdueBook = new Transaction("ISBN_OK", "MEMBER_Y", LocalDate.now().plusDays(1));  // Not overdue
+        Transaction returnedOverdueBook = new Transaction("ISBN_RETOVER", "MEMBER_Z", LocalDate.now().minusDays(5));
+        returnedOverdueBook.setReturnDateTime(LocalDateTime.now().minusDays(1)); // Returned (late, but returned)
+
+        when(mockTransactionRepository.findAllOpenBorrowTransactions()).thenReturn(List.of(overdueBook, notOverdueBook)); 
+        // findAllOpenBorrowTransactions should only return non-returned items.
+        // The isOverdue() check will then filter these.
+
+        List<Transaction> overdueBooks = libraryService.getAllOverdueBooks();
+
+        assertEquals(1, overdueBooks.size());
+        assertEquals("ISBN_OVERDUE", overdueBooks.get(0).getBookIsbn());
     }
 }

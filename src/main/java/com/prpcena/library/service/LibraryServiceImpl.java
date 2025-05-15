@@ -1,13 +1,19 @@
 // src/main/java/com/yourusername/library/service/LibraryServiceImpl.java
 package com.prpcena.library.service; // Adjust package name
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.Year;
 import java.util.List;
-import java.util.Optional;
+import java.util.Objects;
+import java.util.Optional; // New import
+import java.util.stream.Collectors; // New import
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.prpcena.library.exception.BookAlreadyBorrowedException;
+import com.prpcena.library.exception.BookNotBorrowedException;
 import com.prpcena.library.exception.BookNotFoundException;
 import com.prpcena.library.exception.MemberNotFoundException;
 import com.prpcena.library.exception.NoCopiesAvailableException;
@@ -15,26 +21,27 @@ import com.prpcena.library.exception.OperationFailedException;
 import com.prpcena.library.model.Author;
 import com.prpcena.library.model.Book;
 import com.prpcena.library.model.Member;
+import com.prpcena.library.model.Transaction; // New import
+import com.prpcena.library.model.TransactionType;
 import com.prpcena.library.repository.BookRepository;
 import com.prpcena.library.repository.MemberRepository;
+import com.prpcena.library.repository.TransactionRepository;
 
 public class LibraryServiceImpl implements LibraryService {
     private static final Logger logger = LoggerFactory.getLogger(LibraryServiceImpl.class);
     private final BookRepository bookRepository;
     private final MemberRepository memberRepository; 
+    private final TransactionRepository transactionRepository; // New field
+    private static final int DEFAULT_LOAN_DURATION_DAYS = 14; // e.g., 2 weeks
 
     // Updated Constructor Injection
-    public LibraryServiceImpl(BookRepository bookRepository, MemberRepository memberRepository) {
-        if (bookRepository == null) {
-            logger.error("BookRepository cannot be null for LibraryServiceImpl initialization.");
-            throw new IllegalArgumentException("BookRepository cannot be null.");
-        }
-        if (memberRepository == null) {
-            logger.error("MemberRepository cannot be null for LibraryServiceImpl initialization.");
-            throw new IllegalArgumentException("MemberRepository cannot be null.");
-        }
-        this.bookRepository = bookRepository;
-        this.memberRepository = memberRepository; // Initialize
+    // Updated Constructor Injection
+    public LibraryServiceImpl(BookRepository bookRepository, MemberRepository memberRepository,
+            TransactionRepository transactionRepository) {
+        this.bookRepository = Objects.requireNonNull(bookRepository, "BookRepository cannot be null.");
+        this.memberRepository = Objects.requireNonNull(memberRepository, "MemberRepository cannot be null.");
+        this.transactionRepository = Objects.requireNonNull(transactionRepository,
+                "TransactionRepository cannot be null.");
     }
 
 
@@ -120,59 +127,105 @@ public class LibraryServiceImpl implements LibraryService {
         return memberRepository.findAll();
     }
 
-    // --- New Borrowing Method ---
+    // --- Borrowing and Returning Methods ---
     @Override
     public void borrowBook(String memberId, String bookIsbn) {
         logger.info("Attempting to borrow book ISBN {} for member ID {}", bookIsbn, memberId);
 
         Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> {
-                    logger.warn("Borrow failed: Member not found with ID {}", memberId);
-                    return new MemberNotFoundException("Member with ID " + memberId + " not found.");
-                });
+                .orElseThrow(() -> new MemberNotFoundException("Member with ID " + memberId + " not found."));
 
         Book book = bookRepository.findByIsbn(bookIsbn)
-                .orElseThrow(() -> {
-                    logger.warn("Borrow failed: Book not found with ISBN {}", bookIsbn);
-                    return new BookNotFoundException("Book with ISBN " + bookIsbn + " not found.");
-                });
+                .orElseThrow(() -> new BookNotFoundException("Book with ISBN " + bookIsbn + " not found."));
+
+        if (transactionRepository.findOpenBorrowTransactionByMemberAndBook(memberId, bookIsbn).isPresent()) {
+            logger.warn("Borrow failed: Member {} already has an open loan for book ISBN {}", memberId, bookIsbn);
+            throw new BookAlreadyBorrowedException("Member " + member.getName() + " has already borrowed book '" + book.getTitle() + "'.");
+        }
 
         if (book.getAvailableCopies() <= 0) {
             logger.warn("Borrow failed: No copies available for book ISBN {}", bookIsbn);
             throw new NoCopiesAvailableException("No copies available for book: " + book.getTitle());
         }
 
-        // Optional: Check if member already borrowed this specific book instance (if rules apply)
-        // This simple implementation doesn't track which specific copy is borrowed, just that a book of this ISBN is borrowed.
-        // For a more robust system, you'd have a Loan entity/table.
-        // For now, we'll assume a member can borrow multiple copies of the same ISBN if they are available
-        // or that the "BookAlreadyBorrowed" refers to a specific item instance.
-        // Let's simplify and not implement BookAlreadyBorrowedException for *this iteration* unless a member has a list of borrowed ISBNs.
-
-        // If we add a list of borrowed book ISBNs to the Member class:
-        // if (member.getBorrowedBookIsbns().contains(bookIsbn)) {
-        //     throw new BookAlreadyBorrowedException("Member " + memberId + " has already borrowed book " + bookIsbn);
-        // }
-
         try {
-            book.decreaseAvailableCopies(); // This mutates the Book object
+            book.decreaseAvailableCopies();
             bookRepository.save(book); // Persist the change in available copies
 
-            // TODO: Record the transaction. For this iteration, we could:
-            // 1. Add a List<String> borrowedBookIsbns to Member (simplest for now)
-            //    (This requires Member to be mutable and getters/setters for this list)
-            // 2. Create a Transaction object and store it in a new TransactionRepository (more robust, for later)
-            // For now, let's go with a conceptual "transaction recorded" log.
-            // We'll enhance this in Iteration 3 with a Transaction class.
+            LocalDate dueDate = LocalDate.now().plusDays(DEFAULT_LOAN_DURATION_DAYS);
+            Transaction borrowTransaction = new Transaction(bookIsbn, memberId, dueDate);
+            transactionRepository.save(borrowTransaction);
 
-            logger.info("Book '{}' (ISBN: {}) successfully borrowed by member '{}' (ID: {}). Copies remaining: {}",
-                    book.getTitle(), bookIsbn, member.getName(), memberId, book.getAvailableCopies());
+            logger.info("Book '{}' (ISBN: {}) successfully borrowed by member '{}' (ID: {}). Due date: {}. Copies remaining: {}",
+                    book.getTitle(), bookIsbn, member.getName(), memberId, dueDate, book.getAvailableCopies());
         } catch (Exception e) {
-            // This catch block is a fallback. Specific exceptions should be handled above.
-            // If decreaseAvailableCopies or save fails unexpectedly.
+            // This is a general catch. If bookRepository.save or transactionRepository.save fails.
+            // A real system might need to roll back book.decreaseAvailableCopies() if it's not idempotent or if other parts failed.
+            // For this in-memory version, the state of 'book' object might be inconsistent if not handled carefully.
             logger.error("Borrow operation failed unexpectedly for book ISBN {} and member ID {}", bookIsbn, memberId, e);
-            // Potentially revert any partial changes if in a real transactional system.
+            // Re-increment copies if decreased but transaction failed, only if it makes sense and is safe.
+            // book.increaseAvailableCopies(); // Risky without more context on failure point.
             throw new OperationFailedException("Failed to complete borrow operation for book " + bookIsbn, e);
         }
+    }
+
+    @Override
+    public void returnBook(String memberId, String bookIsbn) {
+        logger.info("Attempting to return book ISBN {} for member ID {}", bookIsbn, memberId);
+
+        // Validate member exists (optional, as transaction check is primary)
+        memberRepository.findById(memberId)
+                .orElseThrow(() -> new MemberNotFoundException("Member with ID " + memberId + " not found."));
+
+        Book book = bookRepository.findByIsbn(bookIsbn)
+                .orElseThrow(() -> new BookNotFoundException("Book with ISBN " + bookIsbn + " not found in catalog."));
+
+        Transaction openTransaction = transactionRepository.findOpenBorrowTransactionByMemberAndBook(memberId, bookIsbn)
+                .orElseThrow(() -> {
+                    logger.warn("Return failed: No open borrow transaction found for member {} and book ISBN {}", memberId, bookIsbn);
+                    return new BookNotBorrowedException("Book '" + book.getTitle() + "' was not found as borrowed by member ID " + memberId + " or already returned.");
+                });
+
+        try {
+            book.increaseAvailableCopies();
+            bookRepository.save(book); // Persist change in available copies
+
+            openTransaction.setReturnDateTime(LocalDateTime.now());
+            // Here you could also change transaction type if you had a separate RETURN record
+            // but for "closing" a BORROW, just setting returnDateTime is fine.
+            transactionRepository.save(openTransaction); // Update the transaction
+
+            logger.info("Book '{}' (ISBN: {}) successfully returned by member ID {}. Overdue: {}",
+                    book.getTitle(), bookIsbn, memberId, openTransaction.isOverdue());
+            if (openTransaction.isOverdue()) {
+                // TODO: Handle fines in a later iteration or as an extension
+                System.out.println("Notification: Book '" + book.getTitle() + "' was returned LATE.");
+                logger.warn("Book ISBN {} returned LATE by member ID {}. Due: {}, Returned: {}",
+                           bookIsbn, memberId, openTransaction.getDueDate(), openTransaction.getReturnDateTime());
+            }
+
+        } catch (Exception e) {
+            logger.error("Return operation failed unexpectedly for book ISBN {} and member ID {}", bookIsbn, memberId, e);
+            // Consider rollback logic if applicable (e.g., if book save fails after transaction update or vice-versa)
+            throw new OperationFailedException("Failed to complete return operation for book " + bookIsbn, e);
+        }
+    }
+
+    @Override
+    public List<Transaction> getBorrowedBooksByMember(String memberId) {
+        memberRepository.findById(memberId)
+                .orElseThrow(() -> new MemberNotFoundException("Member with ID " + memberId + " not found."));
+        logger.debug("Fetching borrowed books for member ID: {}", memberId);
+        return transactionRepository.findByMemberId(memberId).stream()
+                .filter(t -> t.getType() == TransactionType.BORROW && t.getReturnDateTime() == null)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<Transaction> getAllOverdueBooks() {
+        logger.debug("Fetching all overdue books.");
+        return transactionRepository.findAllOpenBorrowTransactions().stream()
+                .filter(Transaction::isOverdue)
+                .collect(Collectors.toList());
     }
 }

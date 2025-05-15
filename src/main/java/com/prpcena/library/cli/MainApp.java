@@ -1,23 +1,31 @@
 // src/main/java/com/yourusername/library/cli/MainApp.java
 package com.prpcena.library.cli; // Adjust package name
 
-import com.prpcena.library.exception.*;
-import com.prpcena.library.model.Book;
-import com.prpcena.library.model.Member;
-import com.prpcena.library.repository.BookRepository;
-import com.prpcena.library.repository.InMemoryBookRepository;
-import com.prpcena.library.repository.MemberRepository; // New
-import com.prpcena.library.repository.InMemoryMemberRepository; // New
-import com.prpcena.library.service.LibraryService;
-import com.prpcena.library.service.LibraryServiceImpl;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.time.Year;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Optional;
-import java.util.Scanner;
+import java.util.Scanner; // New
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory; // New
+
+import com.prpcena.library.exception.BookNotBorrowedException;
+import com.prpcena.library.exception.BookNotFoundException;
+import com.prpcena.library.exception.MemberNotFoundException;
+import com.prpcena.library.exception.NoCopiesAvailableException;
+import com.prpcena.library.exception.OperationFailedException;
+import com.prpcena.library.model.Book;
+import com.prpcena.library.model.Member;
+import com.prpcena.library.model.Transaction;
+import com.prpcena.library.repository.BookRepository;
+import com.prpcena.library.repository.InMemoryBookRepository;
+import com.prpcena.library.repository.InMemoryMemberRepository;
+import com.prpcena.library.repository.InMemoryTransactionRepository;
+import com.prpcena.library.repository.MemberRepository;
+import com.prpcena.library.repository.TransactionRepository;
+import com.prpcena.library.service.LibraryService;
+import com.prpcena.library.service.LibraryServiceImpl;
 
 public class MainApp {
     private static final Logger logger = LoggerFactory.getLogger(MainApp.class);
@@ -28,8 +36,9 @@ public class MainApp {
         // Setup: Dependency Injection
         BookRepository bookRepository = new InMemoryBookRepository();
         MemberRepository memberRepository = new InMemoryMemberRepository(); // New
-        libraryService = new LibraryServiceImpl(bookRepository, memberRepository); // Updated
-
+        TransactionRepository transactionRepository = new InMemoryTransactionRepository();
+        libraryService = new LibraryServiceImpl(bookRepository, memberRepository, transactionRepository);
+        
         logger.info("Library Management System CLI started.");
         boolean running = true;
         while (running) {
@@ -73,6 +82,15 @@ public class MainApp {
                 case 8:
                     borrowBookUI();
                     break; // New
+                case 9:
+                    returnBookUI();
+                    break; // New
+                case 10:
+                    listBorrowedBooksByMemberUI();
+                    break; // New
+                case 11:
+                    listAllOverdueBooksUI();
+                    break; // New
                 case 0:
                     running = false;
                     break;
@@ -99,13 +117,85 @@ public class MainApp {
         System.out.println("7. List All Members");
         System.out.println("--- Library Operations ---");
         System.out.println("8. Borrow Book");
-        // System.out.println("9. Return Book"); // For Iteration 3
+        System.out.println("9. Return Book");
+        System.out.println("10. List Member's Borrowed Books");
+        System.out.println("11. List All Overdue Books");
         System.out.println("-----------------------");
         System.out.println("0. Exit");
         System.out.print("Enter your choice: ");
     }
 
-    // ... existing Book UI methods ...
+    private static void returnBookUI() {
+        try {
+            System.out.print("Enter Member ID returning the book: ");
+            String memberId = scanner.nextLine();
+            System.out.print("Enter Book ISBN being returned: ");
+            String bookIsbn = scanner.nextLine();
+
+            libraryService.returnBook(memberId, bookIsbn);
+            System.out.println("Book (ISBN: " + bookIsbn + ") successfully returned by member (ID: " + memberId + ").");
+            logger.info("Book ISBN {} returned by member ID {} via UI.", bookIsbn, memberId);
+        } catch (MemberNotFoundException | BookNotFoundException | BookNotBorrowedException | OperationFailedException e) {
+            System.out.println("Error returning book: " + e.getMessage());
+            logger.warn("Error during returnBookUI: {}", e.getMessage());
+        } catch (Exception e) {
+            System.out.println("An unexpected error occurred while returning the book.");
+            logger.error("Unexpected error during returnBookUI: ", e);
+        }
+    }
+
+    private static void listBorrowedBooksByMemberUI() {
+        try {
+            System.out.print("Enter Member ID to list borrowed books: ");
+            String memberId = scanner.nextLine();
+            List<Transaction> borrowedTransactions = libraryService.getBorrowedBooksByMember(memberId);
+            if (borrowedTransactions.isEmpty()) {
+                System.out.println("Member ID " + memberId + " has no books currently borrowed.");
+            } else {
+                System.out.println("Books currently borrowed by member ID " + memberId + ":");
+                borrowedTransactions.forEach(transaction -> {
+                    // Fetch book details for better display
+                    Optional<Book> bookOpt = libraryService.findBookByIsbn(transaction.getBookIsbn());
+                    String bookTitle = bookOpt.map(Book::getTitle).orElse("N/A - Book details not found");
+                    System.out.println(" - ISBN: " + transaction.getBookIsbn() + ", Title: " + bookTitle +
+                                       ", Due: " + transaction.getDueDate() +
+                                       (transaction.isOverdue() ? " (OVERDUE)" : ""));
+                });
+            }
+        } catch (MemberNotFoundException e) {
+            System.out.println("Error: " + e.getMessage());
+        } catch (Exception e) {
+            System.out.println("An unexpected error occurred.");
+            logger.error("Error in listBorrowedBooksByMemberUI: ", e);
+        }
+    }
+
+    private static void listAllOverdueBooksUI() {
+        try {
+            List<Transaction> overdueTransactions = libraryService.getAllOverdueBooks();
+            if (overdueTransactions.isEmpty()) {
+                System.out.println("There are no overdue books currently.");
+            } else {
+                System.out.println("All overdue books:");
+                overdueTransactions.forEach(transaction -> {
+                    Optional<Book> bookOpt = libraryService.findBookByIsbn(transaction.getBookIsbn());
+                    String bookTitle = bookOpt.map(Book::getTitle).orElse("N/A");
+                    Optional<Member> memberOpt = libraryService.findMemberById(transaction.getMemberId());
+                    String memberName = memberOpt.map(Member::getName).orElse("N/A");
+
+                    System.out.println(" - Member: " + memberName + " (ID: " + transaction.getMemberId() + ")");
+                    System.out.println("   Book: " + bookTitle + " (ISBN: " + transaction.getBookIsbn() + ")");
+                    System.out.println("   Due Date: " + transaction.getDueDate());
+                    System.out.println("   Borrowed On: " + transaction.getTransactionDateTime().toLocalDate());
+                    System.out.println("   ---");
+                });
+            }
+        } catch (Exception e) {
+            System.out.println("An unexpected error occurred while listing overdue books.");
+            logger.error("Error in listAllOverdueBooksUI: ", e);
+        }
+    }
+
     private static void addBookUI() { /* ... as before ... */
         try {
             System.out.print("Enter title: ");

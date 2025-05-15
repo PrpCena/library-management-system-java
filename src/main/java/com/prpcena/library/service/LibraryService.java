@@ -5,8 +5,13 @@ import java.time.Year;
 import java.util.List;
 import java.util.Optional;
 
+import com.prpcena.library.exception.BookNotBorrowedException;
+import com.prpcena.library.exception.BookNotFoundException;
+import com.prpcena.library.exception.MemberNotFoundException;
+import com.prpcena.library.exception.OperationFailedException;
 import com.prpcena.library.model.Book;
 import com.prpcena.library.model.Member;
+import com.prpcena.library.model.Transaction;
 
 public interface LibraryService {
     /**
@@ -133,4 +138,28 @@ public interface LibraryService {
     void borrowBook(String memberId, String bookIsbn);
 
     // (We'll add returnBook in Iteration 3)
+    /**
+     * Allows a member to return a book.
+     * @param memberId The ID of the member returning the book.
+     * @param bookIsbn The ISBN of the book being returned.
+     * @throws MemberNotFoundException if the member is not found.
+     * @throws BookNotFoundException if the book (by ISBN) is not found in general catalog (though less likely to be the primary issue here).
+     * @throws BookNotBorrowedException if there's no record of this member borrowing this book or it's already returned.
+     * @throws OperationFailedException if the return operation fails for other reasons.
+     */
+    void returnBook(String memberId, String bookIsbn);
+
+    /**
+     * Gets a list of books currently borrowed by a specific member.
+     * @param memberId The ID of the member.
+     * @return A list of Transaction objects representing active loans.
+     * @throws MemberNotFoundException if the member is not found.
+     */
+    List<Transaction> getBorrowedBooksByMember(String memberId);
+
+    /**
+     * Gets a list of all currently overdue books across all members.
+     * @return A list of Transaction objects representing overdue loans.
+     */
+    List<Transaction> getAllOverdueBooks();
 }
