@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 import com.prpcena.library.model.Book;
+import com.prpcena.library.model.Member;
 
 public interface LibraryService {
     /**
@@ -61,6 +62,75 @@ public interface LibraryService {
      */
     boolean removeBookByIsbn(String isbn);
 
-    // (We'll add updateBook in a later iteration or refine addBook to handle
-    // updates)
+    // New Member methods
+    /**
+     * Registers a new member in the library.
+     * 
+     * @param name        The name of the member.
+     * @param contactInfo The contact information (e.g., email) of the member.
+     * @return The newly registered Member.
+     * @throws IllegalArgumentException if inputs are invalid.
+     */
+    Member registerMember(String name, String contactInfo);
+
+    /**
+     * Finds a member by their ID.
+     * 
+     * @param memberId The ID of the member to find.
+     * @return An Optional containing the member if found, or an empty Optional
+     *         otherwise.
+     */
+    Optional<Member> findMemberById(String memberId);
+
+    /**
+     * Retrieves all registered members.
+     * 
+     * @return A list of all members.
+     */
+    List<Member> getAllMembers(); // New method
+
+    // New Borrowing method
+    /**
+     * Allows a member to borrow a book.
+     * 
+     * @param memberId The ID of the member borrowing the book.
+     * @param bookIsbn The ISBN of the book to be borrowed.
+     * @throws com.yourusername.library.exception.MemberNotFoundException      if
+     *                                                                         the
+     *                                                                         member
+     *                                                                         is
+     *                                                                         not
+     *                                                                         found.
+     * @throws com.yourusername.library.exception.BookNotFoundException        if
+     *                                                                         the
+     *                                                                         book
+     *                                                                         is
+     *                                                                         not
+     *                                                                         found.
+     * @throws com.yourusername.library.exception.NoCopiesAvailableException   if no
+     *                                                                         copies
+     *                                                                         of
+     *                                                                         the
+     *                                                                         book
+     *                                                                         are
+     *                                                                         available.
+     * @throws com.yourusername.library.exception.BookAlreadyBorrowedException (optional)
+     *                                                                         if
+     *                                                                         member
+     *                                                                         already
+     *                                                                         has
+     *                                                                         this
+     *                                                                         book.
+     * @throws com.yourusername.library.exception.OperationFailedException     if
+     *                                                                         the
+     *                                                                         borrowing
+     *                                                                         operation
+     *                                                                         fails
+     *                                                                         for
+     *                                                                         other
+     *                                                                         reasons.
+     */
+    void borrowBook(String memberId, String bookIsbn);
+
+    // (We'll add returnBook in Iteration 3)
 }
